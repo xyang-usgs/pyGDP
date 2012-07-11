@@ -406,11 +406,11 @@ def submitFeatureWeightedRequest(filename, dataSetURI, dataType, attribute, valu
     execution = buildRequest(processid, inputs, output="OUTPUT")
     request = etree.tostring(execution, pretty_print = True)
     
-    """
+    
     text_file = open("pyGDPoutputRequest.xml", "w")
     text_file.write(request)
     text_file.close()   
-    """
+    
     
     old_stdout = sys.stdout
     result = StringIO()
@@ -450,11 +450,8 @@ def getData(fname, delim):
     while i < len(rows):
         dataEntries.append(rows[i][:-1].split(delimitor)) 
         i = i + 1
-        
-    print dataType
-    print values
-    print description
-    print dataEntries
+    
+    return dataType,values,description, dataEntries
     
 def createFeatureWeightedInput(feature_atr_name, dataSetURI, dataSetID, Tstart, Tend, coverage='true', delim='TAB', stat='MEAN', stat2='COUNT', grpby='STATISTIC', timStp='false', fturat='false'):
     """
@@ -651,9 +648,6 @@ class InputCollection():
             surfaceMemElement = etree.SubElement(multiSurfaceElement, util.nspath_eval('gml:surfaceMemeber', namespaces))
             
             eg = geo[1]
-            
-            ############################
-            ############################
         
             eg = re.split('<|>', eg)
             for i in eg:
@@ -662,15 +656,19 @@ class InputCollection():
 
             
             if eg[0].startswith('gml:Polygon'):
-                tmpElement = etree.SubElement(surfaceMemElement, util.nspath_eval('gml:Polygon', namespaces))
+                shapeElement = etree.SubElement(surfaceMemElement, util.nspath_eval('gml:Polygon', namespaces))
             else:
-                tmpElement = etree.SubElement(surfaceMemElement, util.nspath_eval(eg[0], namespaces))
+                shapeElement = etree.SubElement(surfaceMemElement, util.nspath_eval(eg[0], namespaces))
             
             ind = 1
             while ind < len(eg):
                 if eg[ind].startswith('gml'):
                     if eg[ind].startswith('gml:Polygon '):
-                        tmpElement = etree.SubElement(tmpElement, util.nspath_eval('gml:Polygon', namespaces))
+                        tmpElement = etree.SubElement(shapeElement, util.nspath_eval('gml:Polygon', namespaces))
+                    elif eg[ind].startswith('gml:exterior'):
+                        tmpElement = etree.SubElement(shapeElement, util.nspath_eval(eg[ind], namespaces))  
+                    elif eg[ind].startswith('gml:interior'):
+                        tmpElement = etree.SubElement(shapeElement, util.nspath_eval(eg[ind], namespaces))  
                     else:    
                         tmpElement = etree.SubElement(tmpElement, util.nspath_eval(eg[ind], namespaces))  
                 elif eg[ind] == "":
@@ -681,21 +679,5 @@ class InputCollection():
                     tmpElement.text = eg[ind]
                 ind = ind + 1
 
-            """
-            #######
-            fileo = open('toString.txt', 'w')
-            fileo.write(etree.tostring(surfaceMemElement, pretty_print=True))
-            fileo.close()
-            exit()
             
-            ######
-            """
-        """
-        request = etree.tostring(root, pretty_print=True)
-        tmpFile = open('errorchecking.txt', 'w')
-        tmpFile.write(request)
-        tmpFile.close()
-        
-        exit()
-        """
         return root
