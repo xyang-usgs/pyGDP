@@ -34,15 +34,14 @@ def getInput(listInput):
 def main():
     
     filePath = openFile()
-   
+    print filePath
     #print attributes
     attributes = pyGDP.getAttributesFromShape(filePath)
     usr_attribute = getInput(attributes)
     
     values = pyGDP.getValuesFromShape(filePath, usr_attribute)
     usr_value = getInput(values)
-    #usr_value = ['Vermont']
-    #usr_value = 'Vermont'
+    
     
     # we now have user_attribute & user_value
     # time to select a datasetURI, data type, and time
@@ -59,6 +58,7 @@ def main():
         print i
     
     pyGDP.submitFeatureWeightedRequest(filePath, dataSet, dataTypes[0], usr_attribute, usr_value, timeRange[0], timeRange[0])
+    
     
     """ 
     # instantiate WPS client

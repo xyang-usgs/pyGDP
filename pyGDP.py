@@ -12,7 +12,8 @@ from owslib.wps import WebProcessingService, WPSExecution, WFSFeatureCollection,
 from owslib.ows import DEFAULT_OWS_NAMESPACE, XSI_NAMESPACE, XLINK_NAMESPACE, \
                        OWS_NAMESPACE_1_0_0, ServiceIdentification, ServiceProvider, OperationsMetadata
 import owslib.util as util
-import re
+import re, sys
+from StringIO import StringIO
 
 # namespace definition
 WPS_DEFAULT_NAMESPACE="http://www.opengis.net/wps/1.0.0"
@@ -116,6 +117,11 @@ def formGeometry(userValue, userAttribute, dataSource):
             feature.Destroy()
             feature = layer.GetNextFeature()
     
+    # tfile = open('rawGMLoutput.txt', 'w')
+    # for i in geometry:
+    #     tfile.write(str(i) + '\n')
+    # tfile.close()
+    
     return formGML(geometry, usrVal)
 
 # Actual function that performs the task.
@@ -195,7 +201,7 @@ def adjustTags(tags):
         tags[i] = tags[i].replace("outerBoundaryIs", "exterior")
         tags[i] = tags[i].replace("innerBoundaryIs", "interior")
         tags[i] = "</gml:posList>" + tags[i]
-        tags[i] = tags[i] + "<gml:posList>"
+        tags[i] = tags[i] + "gml:posList>"
         i = i + 1
         
     tags[(len(tags) - 1)] = tags[(len(tags) - 1)].replace("outerBoundaryIs", "exterior")
@@ -216,7 +222,7 @@ def getDataSetURI():
 
 # Given a dataSetURI, makes a wps call to cida..., retrives the response XML and gets back
 # a list of data types
-def getDataType(dataSetURI):
+def getDataType(dataSetURI, verbose=False):
     POST = WebProcessingService('http://cida.usgs.gov/climate/gdp/proxy/http://internal.cida.usgs.gov/gdp/utility/WebProcessingService', verbose=False)
     
     #<wps:Execute xmlns:wps="http://www.opengis.net/wps/1.0.0" 
@@ -274,9 +280,17 @@ def getDataType(dataSetURI):
     outputElement = etree.SubElement(responseDocElement, util.nspath_eval('wps:Output', namespaces), attrib={'asReference': 'true'})
     identifierElement = etree.SubElement(outputElement, util.nspath_eval('ows:Identifier', namespaces))
     identifierElement.text = 'result'
-
+    
+    if not verbose:
+        old_stdout = sys.stdout
+        result = StringIO()
+        sys.stdout = result
     request = etree.tostring(root, pretty_print=False)
     execution = POST.execute(None, [], request=request)
+    
+    if not verbose:
+        sys.stdout = old_stdout
+        result_string = result.getvalue()
     return parseXMLatTag(execution.response, 'name')
 
 # This should be a private method.
@@ -291,7 +305,7 @@ def parseXMLatTag(xml, tag):
 
 # Given a datasetURI and a valid dataType, return
 # the valid time range of the dataSet
-def getDataSetTimeRange(dataSetURI, dataType):
+def getDataSetTimeRange(dataSetURI, dataType, verbose=False):
     POST = WebProcessingService('http://cida.usgs.gov/climate/gdp/proxy/http://internal.cida.usgs.gov/gdp/utility/WebProcessingService', verbose=False)
     
     identifier = 'gov.usgs.cida.gdp.wps.algorithm.discovery.GetGridTimeRange'
@@ -340,8 +354,17 @@ def getDataSetTimeRange(dataSetURI, dataType):
     identifierElement = etree.SubElement(outputElement, util.nspath_eval('ows:Identifier', namespaces))
     identifierElement.text = 'result'
     
+    if not verbose:
+        old_stdout = sys.stdout
+        result = StringIO()
+        sys.stdout = result
+    
     request = etree.tostring(root, pretty_print=True)
     execution = POST.execute(None, [], request=request)
+    
+    if not verbose:
+        sys.stdout = old_stdout
+        result_string = result.getvalue()
     return parseXMLatTag(execution.response, 'time')
 
 
@@ -357,6 +380,12 @@ def submitFeatureWeightedRequest(filename, dataSetURI, dataType, attribute, valu
     
     processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureWeightedGridStatisticsAlgorithm'
     geom = formGeometry(value, attribute, dataSource)
+    
+    # tmpFile = open('tmpDebugGML.txt', 'w')
+    # for i in geom:
+    #    tmpFile.write(str(i)+'\n')
+    # tmpFile.close()
+    
     
     inputCollection = InputCollection(geom, attribute, value, start, end)
     inputs =  [ ("FEATURE_ATTRIBUTE_NAME",inputCollection.attribute),
@@ -380,14 +409,52 @@ def submitFeatureWeightedRequest(filename, dataSetURI, dataType, attribute, valu
     """
     text_file = open("pyGDPoutputRequest.xml", "w")
     text_file.write(request)
-    text_file.close()
+    text_file.close()   
     """
     
-    verbose = False
-    wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService', verbose=verbose)
-    execution = wps.execute(None, [], request=request)
-    monitorExecution(execution, download=True, output=True)
+    old_stdout = sys.stdout
+    result = StringIO()
+    sys.stdout = result
     
+    wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService', verbose=False)
+    execution = wps.execute(None, [], request=request)
+    monitorExecution(execution, download=True)
+    
+    sys.stdout = old_stdout
+    result_string = result.getvalue()
+    output = result_string.split('\n')
+    print output[len(output) - 3]
+    print output[len(output) - 2]
+    tmp = output[len(output) - 2].split(' ')
+    fname = tmp[len(tmp)-1]
+    
+    return getData(fname, delim)
+
+def getData(fname, delim):
+    f = open(fname)
+    rows = f.readlines()
+    f.close()
+    
+    delimitor = None
+    if delim == 'TAB':
+        delimitor = '\t'
+    elif delim == 'COMMA':
+        delimitor = ','
+        
+    dataType = rows[0][:-1]
+    values   = rows[1][:-1].split(delimitor)
+    description = rows[2][:-1].split(delimitor)
+    values[0] = 'TIME'
+    i = 3
+    dataEntries = []
+    while i < len(rows):
+        dataEntries.append(rows[i][:-1].split(delimitor)) 
+        i = i + 1
+        
+    print dataType
+    print values
+    print description
+    print dataEntries
     
 def createFeatureWeightedInput(feature_atr_name, dataSetURI, dataSetID, Tstart, Tend, coverage='true', delim='TAB', stat='MEAN', stat2='COUNT', grpby='STATISTIC', timStp='false', fturat='false'):
     """
@@ -439,7 +506,7 @@ def submitFeatureWeightedQuery(filename, propertyNames, filters, wfsUrl, inputs)
     
     processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureWeightedGridStatisticsAlgorithm'
     execution = wps.execute(processid, inputs, output="OUTPUT")
-    monitorExecution(execution)
+    return monitorExecution(execution)
     
 # Submits an already well formed XML request to the WPS. Returns the dataset
 def submitFeatureWeightedXMLRequest(xml):
@@ -454,7 +521,7 @@ def submitFeatureWeightedXMLRequest(xml):
     verbose = False
     wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService', verbose=verbose)
     execution = wps.execute(None, [], request=request)
-    monitorExecution(execution, download=True, output=True)
+    monitorExecution(execution, download=True)
 
 def buildRequest(identifier, inputs=[], output=None):
     """
@@ -537,7 +604,7 @@ def buildRequest(identifier, inputs=[], output=None):
         outputElement = etree.SubElement(responseDocumentElement, util.nspath_eval('wps:Output', namespaces), 
                                                        attrib={'asReference':'true'} )
         outputIdentifierElement = etree.SubElement(outputElement, util.nspath_eval('ows:Identifier', namespaces)).text = output
-                    
+              
     return root
 
 # OpenDap fuction. Submits request using opendap.
@@ -570,7 +637,7 @@ class InputCollection():
         """    
         root = etree.Element(util.nspath_eval('gml:featureMembers', namespaces), nsmap=namespaces,
                              attrib = { util.nspath_eval("xsi:schemaLocation",namespaces) : 'gov.usgs.cida.gdp.sample http://igsarm-cida-gdp1.er.usgs.gov:8080/sibley.xsd http://www.opengis.net/wfs http://igsarm-cida-gdp2.er.usgs.gov:8082/geoserver/schemas/wfs/1.1.0/wfs.xsd'})
-        
+        zz = 0
         # iterates through each specific polygon in the feature collection
         for geo in self.geom:
             sampleElement = etree.SubElement(root, util.nspath_eval('sample:CONUS_States', namespaces))
@@ -582,12 +649,17 @@ class InputCollection():
         
             multiSurfaceElement = etree.SubElement(sampleProp, util.nspath_eval('gml:MultiSurface', namespaces), attrib={'srsName':'urn:x-ogc:def:crs:EPSG:4326', 'srsDimension': '2'})
             surfaceMemElement = etree.SubElement(multiSurfaceElement, util.nspath_eval('gml:surfaceMemeber', namespaces))
-
+            
             eg = geo[1]
+            
+            ############################
+            ############################
+        
             eg = re.split('<|>', eg)
             for i in eg:
                 if i == "":
                     eg.remove("")
+
             
             if eg[0].startswith('gml:Polygon'):
                 tmpElement = etree.SubElement(surfaceMemElement, util.nspath_eval('gml:Polygon', namespaces))
@@ -600,7 +672,7 @@ class InputCollection():
                     if eg[ind].startswith('gml:Polygon '):
                         tmpElement = etree.SubElement(tmpElement, util.nspath_eval('gml:Polygon', namespaces))
                     else:    
-                        tmpElement = etree.SubElement(tmpElement, util.nspath_eval(eg[ind], namespaces))    
+                        tmpElement = etree.SubElement(tmpElement, util.nspath_eval(eg[ind], namespaces))  
                 elif eg[ind] == "":
                     pass
                 elif eg[ind].startswith('/gml'):
@@ -608,4 +680,22 @@ class InputCollection():
                 else:
                     tmpElement.text = eg[ind]
                 ind = ind + 1
+
+            """
+            #######
+            fileo = open('toString.txt', 'w')
+            fileo.write(etree.tostring(surfaceMemElement, pretty_print=True))
+            fileo.close()
+            exit()
+            
+            ######
+            """
+        """
+        request = etree.tostring(root, pretty_print=True)
+        tmpFile = open('errorchecking.txt', 'w')
+        tmpFile.write(request)
+        tmpFile.close()
+        
+        exit()
+        """
         return root
