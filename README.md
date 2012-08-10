@@ -5,19 +5,12 @@ pyGDP provides a fast and efficient way of making calls to the USGS GeoData Port
 
 Dependencies
 =============
-pyGDp requires lxml.etree, gdal ogr, owslib.
+pyGDp requires lxml.etree, and owslib.
 
 Usage
 ==============
 
-#!/usr/bin/env python
-
-import pyGDP
-
-attributes = pyGDP.getAttributesFromShape('shapefile.shp')
-values = pyGDP.getValuesFromShape('shapefile.shp', attributes[0])
-dataSetURIs = pyGDP.getDataSetURI()
-...
+You can find example usgages and scripts in the test folder.
 
 Support
 =============
