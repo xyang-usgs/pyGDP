@@ -6,18 +6,24 @@
 #
 # Contact email: xyang@usgs.gov
 # =============================================================================
-from owslib.wps import WebProcessingService, WPSExecution, WFSFeatureCollection, WFSQuery, GMLMultiPolygonFeatureCollection, monitorExecution, printInputOutput
-from owslib.ows import DEFAULT_OWS_NAMESPACE, XSI_NAMESPACE, XLINK_NAMESPACE, \
-                       OWS_NAMESPACE_1_0_0, ServiceIdentification, ServiceProvider, OperationsMetadata
+from owslib.wps import WebProcessingService, WFSFeatureCollection, WFSQuery, GMLMultiPolygonFeatureCollection, monitorExecution
+from owslib.ows import DEFAULT_OWS_NAMESPACE, XSI_NAMESPACE, XLINK_NAMESPACE
 from owslib.wfs import WebFeatureService
+from owslib.csw import namespaces as cswNamespace
+from owslib.csw import schema as cswSchema
+from owslib.csw import schema_location as cswSchema_location
 from StringIO import StringIO
 from urllib import urlencode
 from urllib2 import urlopen
+import urllib2 
 import owslib.util as util
-import lxml.etree as etree
-import base64, cgi, sys
+from owslib.etree import etree
+import base64
+import cgi
+import sys
 
 gdp_url = 'http://cida.usgs.gov//climate/gdp/proxy/http://cida-eros-gdp2.cr.usgs.gov:8082/geoserver/wfs' 
+gdp_url = 'http://cida.usgs.gov/climate/gdp/proxy/http://cida-eros-gdp2.er.usgs.gov:8082/geoserver/wfs'
 
 # namespace definition
 WPS_DEFAULT_NAMESPACE="http://www.opengis.net/wps/1.0.0"
@@ -46,15 +52,38 @@ namespaces = {
     'upload': UPLD_NAMESPACE
 }
 
-"""
-API for Feature Weighted Grid Statistics GDP requests.
-"""
+def getDataType(dataSetURI, verbose=False):
+    """
+    Set up a get Data type request given a dataSetURI. Returns a list of all available data types.
+    If verbose = True, will print on screen the waiting seq. for response document.
+    """
+    
+    algorithm = 'gov.usgs.cida.gdp.wps.algorithm.discovery.ListOpendapGrids'
+    return generateXMLRequest(dataSetURI, algorithm, method='getDataType', dataType=None, verbose=verbose)
+
+def getTimeRange(dataSetURI, dataType, verbose=False):
+    """
+    Set up a get dataset time range request given a datatype and dataset uri. Returns the range
+    of the earliest and latest time.
+    If verbose = True, will print on screen the waiting seq. for response document.
+    """
+    
+    algorithm = 'gov.usgs.cida.gdp.wps.algorithm.discovery.GetGridTimeRange'
+    return generateXMLRequest(dataSetURI, algorithm, method='getDataSetTime', dataType=dataType, verbose=verbose)
 
 # Given a dataSetURI, makes a wps call to cida..., retrives the response XML and gets back
 # a list of data types
-def getDataType(dataSetURI, verbose=False):
-    POST = WebProcessingService('http://cida.usgs.gov/climate/gdp/proxy/http://internal.cida.usgs.gov/gdp/utility/WebProcessingService', verbose=False)
+def generateXMLRequest(dataSetURI, algorithm, method, dataType=None, verbose=False):
+    """
+    Takes a dataset uri, algorithm, method, and datatype. This function will generate a simple XML document
+    to make the request specified. (Only works for ListOpendapGrids and GetGridTimeRange). 
     
+    Will return a list containing the info requested for (either data types or time range).
+    """
+    
+    wps_Service = 'http://cida.usgs.gov/gdp/utility/WebProcessingService'
+    POST = WebProcessingService(wps_Service, verbose=False)
+        
     #<wps:Execute xmlns:wps="http://www.opengis.net/wps/1.0.0" 
     #             xmlns:ows="http://www.opengis.net/ows/1.1" 
     #             xmlns:xlink="http://www.w3.org/1999/xlink" 
@@ -69,7 +98,7 @@ def getDataType(dataSetURI, verbose=False):
     
     # <ows:Identifier>gov.usgs.cida.gdp.wps.algorithm.discovery.ListOpendapGrids</ows:Identifier>
     identifierElement = etree.SubElement(root, util.nspath_eval('ows:Identifier', namespaces))
-    identifierElement.text = 'gov.usgs.cida.gdp.wps.algorithm.discovery.ListOpendapGrids'
+    identifierElement.text = algorithm
     
     # <wps:DataInputs>
     #    <wps:Input>
@@ -91,6 +120,14 @@ def getDataType(dataSetURI, verbose=False):
     literalElement = etree.SubElement(dataElement, util.nspath_eval('wps:LiteralData', namespaces))
     literalElement.text = dataSetURI
     
+    if method == 'getDataSetTime':
+        inputElements = etree.SubElement(dataInputsElement, util.nspath_eval('wps:Input', namespaces))
+        identifierElement = etree.SubElement(inputElements, util.nspath_eval('ows:Identifier', namespaces))
+        identifierElement.text = 'grid'
+        dataElement = etree.SubElement(inputElements, util.nspath_eval('wps:Data', namespaces))
+        literalElement = etree.SubElement(dataElement, util.nspath_eval('wps:LiteralData', namespaces))
+        literalElement.text = dataType
+    
     inputElements = etree.SubElement(dataInputsElement, util.nspath_eval('wps:Input', namespaces))
     identifierElement = etree.SubElement(inputElements, util.nspath_eval('ows:Identifier', namespaces))
     identifierElement.text = 'allow-cached-response'
@@ -111,87 +148,29 @@ def getDataType(dataSetURI, verbose=False):
     identifierElement = etree.SubElement(outputElement, util.nspath_eval('ows:Identifier', namespaces))
     identifierElement.text = 'result'
     
+    # change standard output to not display waiting status
     if not verbose:
         old_stdout = sys.stdout
         result = StringIO()
-        sys.stdout = result
-    request = etree.tostring(root, pretty_print=False)
-    execution = POST.execute(None, [], request=request)
+        sys.stdout = result   
+    request = etree.tostring(root)
     
+    execution = POST.execute(None, [], request=request)
+    if method == 'getDataSetTime':
+        seekterm = 'time'
+    else:
+        seekterm = 'name'
     if not verbose:
         sys.stdout = old_stdout
-        result_string = result.getvalue()
-    return parseXMLatTag(execution.response, 'name')
+    return parseXMLNodesForTagText(execution.response, seekterm)
 
 
-# Given a datasetURI and a valid dataType, return
-# the valid time range of the dataSet
-def getDataSetTimeRange(dataSetURI, dataType, verbose=False):
-    POST = WebProcessingService('http://cida.usgs.gov/climate/gdp/proxy/http://internal.cida.usgs.gov/gdp/utility/WebProcessingService', verbose=False)
+def parseXMLNodesForTagText(xml, tag):
+    """
+    Parses through a XML tree for text associated with specified tag.
+    Returns a list of the text.
+    """
     
-    identifier = 'gov.usgs.cida.gdp.wps.algorithm.discovery.GetGridTimeRange'
-    #<wps:Execute xmlns:wps="http://www.opengis.net/wps/1.0.0" 
-    #             xmlns:ows="http://www.opengis.net/ows/1.1" 
-    #             xmlns:xlink="http://www.w3.org/1999/xlink" 
-    #             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-    #             service="WPS" 
-    #             version="1.0.0" 
-    #             xsi:schemaLocation="http://www.opengis.net/wps/1.0.0 http://schemas.opengis.net/wps/1.0.0/wpsExecute_request.xsd">       
-    root = etree.Element(util.nspath_eval('wps:Execute', namespaces), nsmap=namespaces)
-    root.set('service', 'WPS')
-    root.set('version', WPS_DEFAULT_VERSION)
-    root.set(util.nspath_eval('xsi:schemaLocation', namespaces), '%s %s' % (namespaces['wps'], WPS_DEFAULT_SCHEMA_LOCATION) )
-    
-    # <ows:Identifier>gov.usgs.cida.gdp.wps.algorithm.FeatureWeightedGridStatisticsAlgorithm</ows:Identifier>
-    identifierElement = etree.SubElement(root, util.nspath_eval('ows:Identifier', namespaces))
-    identifierElement.text = identifier
-    
-    # <wps:DataInputs>
-    dataInputsElement = etree.SubElement(root, util.nspath_eval('wps:DataInputs', namespaces))
-    inputElements = etree.SubElement(dataInputsElement, util.nspath_eval('wps:Input', namespaces))
-    identifierElement = etree.SubElement(inputElements, util.nspath_eval('ows:Identifier', namespaces))
-    identifierElement.text = 'catalog-url'
-    dataElement = etree.SubElement(inputElements, util.nspath_eval('wps:Data', namespaces))
-    literalElement = etree.SubElement(dataElement, util.nspath_eval('wps:LiteralData', namespaces))
-    literalElement.text = dataSetURI
-  
-    inputElements = etree.SubElement(dataInputsElement, util.nspath_eval('wps:Input', namespaces))
-    identifierElement = etree.SubElement(inputElements, util.nspath_eval('ows:Identifier', namespaces))
-    identifierElement.text = 'grid'
-    dataElement = etree.SubElement(inputElements, util.nspath_eval('wps:Data', namespaces))
-    literalElement = etree.SubElement(dataElement, util.nspath_eval('wps:LiteralData', namespaces))
-    literalElement.text = dataType
-    
-    inputElements = etree.SubElement(dataInputsElement, util.nspath_eval('wps:Input', namespaces))
-    identifierElement = etree.SubElement(inputElements, util.nspath_eval('ows:Identifier', namespaces))
-    identifierElement.text = 'allow-cached-response'
-    dataElement = etree.SubElement(inputElements, util.nspath_eval('wps:Data', namespaces))
-    literalElement = etree.SubElement(dataElement, util.nspath_eval('wps:LiteralData', namespaces))
-    literalElement.text = 'false'
-    
-    responseFormElement = etree.SubElement(root, util.nspath_eval('wps:ResponseForm', namespaces))
-    responseDocElement = etree.SubElement(responseFormElement, util.nspath_eval('wps:ResponseDocument', namespaces))
-    outputElement = etree.SubElement(responseDocElement, util.nspath_eval('wps:Output', namespaces))
-    identifierElement = etree.SubElement(outputElement, util.nspath_eval('ows:Identifier', namespaces))
-    identifierElement.text = 'result'
-    
-    if not verbose:
-        old_stdout = sys.stdout
-        result = StringIO()
-        sys.stdout = result
-    
-    request = etree.tostring(root, pretty_print=True)
-    execution = POST.execute(None, [], request=request)
-    
-    if not verbose:
-        sys.stdout = old_stdout
-        result_string = result.getvalue()
-    return parseXMLatTag(execution.response, 'time')
-
-# This should be a private method.
-# Given an xml, searches for the tag, appends its text to a list
-def parseXMLatTag(xml, tag):
-   
     tag_text = []
     for node in xml.iter():
         if node.tag == tag:
@@ -199,6 +178,10 @@ def parseXMLatTag(xml, tag):
     return tag_text
 
 def encodeZipFolder(zipfilePath):
+    """
+    Given a zip folder, this function will zip the folder and return its filepPath
+    """
+    
     #check extension
     if not zipfilePath.endswith('.zip'):
         print 'Wrong filetype.'
@@ -215,15 +198,28 @@ def encodeZipFolder(zipfilePath):
     return zipfilePath
 
 def uploadService(fileHandle):
+    """
+    Given a base64 encoded zip file, this function will generate a simple XML
+    containing the file to submit to the geoserver.
+    """
+    
     
     fileO = open(fileHandle, "r")
-    stringData = fileO.read()
+    fileData = fileO.read()
     fileO.close()
     
     filename = fileHandle.split("/")
     filename = filename[len(filename)-1] # will get the filename
     filename = filename.replace(".zip", "")
-    wfsurl = 'http://cida-eros-gdp2.cr.usgs.gov:8082/geoserver'
+    
+    #Check to see if file is not online already
+    fileCheckName = "upload:"+filename
+    shapefiles = getShapefiles()
+    if fileCheckName in shapefiles:
+        print 'File exists already.'
+        exit()
+    
+    wfsurl = 'http://cida-eros-gdp2.er.usgs.gov:8082/geoserver'
     
     # Generates the XML document
     POST = WebProcessingService('http://cida.usgs.gov/climate/gdp/utility/WebProcessingService', verbose=False)
@@ -279,7 +275,7 @@ def uploadService(fileHandle):
     dataElement = etree.SubElement(inputElements, util.nspath_eval('wps:Data', namespaces))
     complexDataElement = etree.SubElement(dataElement, util.nspath_eval('wps:ComplexData', namespaces),
                                               attrib={"mimeType":"application/x-zipped-shp", "encoding":"Base64"} )
-    complexDataElement.text = stringData
+    complexDataElement.text = fileData
     
     # <wps:ResponseForm>
     #    <wps:ResponseDocument>
@@ -301,12 +297,16 @@ def uploadService(fileHandle):
     identifierElement.text = 'featuretype'
     
     # now we have a complete XML upload request
-    uploadRequest = etree.tostring(root, pretty_print=False)
+    uploadRequest = etree.tostring(root)
     execution = POST.execute(None, [], request=uploadRequest)
     monitorExecution(execution)
     return filename
 
 def getInput(listInput):
+    """
+    Given a list, this function will print out the list as well as
+    prompt the user to select an item from the list.
+    """
     
     for i in listInput:
         print i
@@ -318,25 +318,11 @@ def getInput(listInput):
         usrinput = str(raw_input())
     return usrinput
 
-def generateCapabilityURL(service_url):
-    
-    qs = []
-    if service_url.find('?') != -1:
-            qs = cgi.parse_qsl(service_url.split('?')[1])
-
-    params = [x[0] for x in qs]
-
-    if 'service' not in params:
-        qs.append(('service', 'WFS'))
-    if 'request' not in params:
-        qs.append(('request', 'GetCapabilities'))
-    if 'version' not in params:
-        qs.append(('version', '1.1.0'))
-
-    urlqs = urlencode(tuple(qs))
-    return service_url.split('?')[0] + '?' + urlqs
-    
 def generateDescribeFeature(typename):
+    """
+    Sets up a cgi request to the wfs for features specified.
+    """
+    
     service_url = gdp_url
     
     qs = []
@@ -358,12 +344,16 @@ def generateDescribeFeature(typename):
     return service_url.split('?')[0] + '?' + urlqs
 
 def getAttributes(shapefile):
+    """
+    Given a valid shapefile, this function will create a cgi call 
+    returning a list of attributes associated with the shapefile.
+    """
     
     urlen = generateDescribeFeature(shapefile)
-    inputObject = urlopen(urlen)
+    linesToParse = urlopen(urlen)
     
     # lines contains the lines with attributes embedded in them
-    lines = parseObjectforInfo(inputObject, 'xsd:element maxOccurs=')
+    lines = getLinesContaining(linesToParse, 'xsd:element maxOccurs=')
     attributes = []
     
     # search the line
@@ -375,6 +365,11 @@ def getAttributes(shapefile):
     return attributes
 
 def getStringBetween(beginterm, line, stopterm):
+    """
+    Helper function. Gets the string between beginterm and stopterm. 
+    Line is the line or superstring to be examined.
+    returns the string inbetween.
+    """
     
     begin_index = line.find(beginterm)
     end_index = line.find(stopterm, begin_index)
@@ -382,7 +377,13 @@ def getStringBetween(beginterm, line, stopterm):
     return line[begin_index + len(beginterm) : end_index ]
 
 def getAllStringBetweenInLine(beginterm, line, stopterm):
+    """
+    Helper function. Gets the string between beginterm and stopterm.
+    But works for repeating instances. 
+    Line is the line or superstring to be examined.
     
+    returns a list of all strings in between.
+    """
     words = []
     
     begin_index = 0
@@ -404,10 +405,15 @@ def getAllStringBetweenInLine(beginterm, line, stopterm):
     return words
 
 def getGMLIDString(GMLbeginterm, line, GMLstopterm, valBeginTerm, valStopTerm):
-    # we are searching for attr-value, gml:id pair
+    """
+    This function is specific to the output documents from the GDP. This
+    function parses the XML document, to find the correct GMLID associated
+    with a feature. Returns the list of values, and a dictionary [feature:id].
+    """
     
+    # we are searching for attr-value, gml:id pair
     value = []
-    tuple = []
+    ntuple = []
     begin_index = 0
     end_index = len(line)
     tmpline = line
@@ -426,10 +432,9 @@ def getGMLIDString(GMLbeginterm, line, GMLstopterm, valBeginTerm, valStopTerm):
             valTerm = tmpline[begin_index2 + len(valBeginTerm) : end_index2 ]
             #tuple: attr-value, gml:id
             tmpTuple = valTerm, gmlterm
-            tuple.append(tmpTuple)
+            ntuple.append(tmpTuple)
             
-            tmpline = tmpline[end_index :]
-            
+            tmpline = tmpline[end_index2 :]
             
             if valTerm not in value:
                 value.append(valTerm)
@@ -437,9 +442,14 @@ def getGMLIDString(GMLbeginterm, line, GMLstopterm, valBeginTerm, valStopTerm):
             #print begin_index
         else:
             break
-    return value, tuple
+    return value, ntuple
 
 def generateValueFeature(typename, attribute):
+    """
+    Simliar to generateAttribute, this function, given a attribute
+    and a typename or filename will return a list of values associated
+    with the file and the attribute chosen.
+    """
     service_url = gdp_url
     
     qs = []
@@ -462,16 +472,31 @@ def generateValueFeature(typename, attribute):
     urlqs = urlencode(tuple(qs))
     return service_url.split('?')[0] + '?' + urlqs
 
+def getGMLIDs(shapefile, attribute, value):
+    tuples = getTuples(shapefile, attribute)
+    return getFilterID(tuples, value)
+
 def getValues(shapefile, attribute, getTuples='false'):
+    """
+    Similar to get attributes, given a shapefile and a valid attribute this function
+    will make a call to the Web Feature Services returning a list of values associated
+    with the shapefile and attribute.
+    
+    If getTuples = True, will also return the tuples of [feature:id]  along with values [feature]
+    """
     
     urlen = generateValueFeature(shapefile, attribute)
     inputObject = urlopen(urlen)
     shapefileterm = shapefile.split(':')
-
-    # inputObject for values had info only on lines[1]? (in all cases?) need to check
-    lines = []
-    for line in inputObject:
-        lines.append(line)
+    
+    strinx = inputObject.read()
+    lines = strinx.split('\n')
+    
+    # gets the tag/namespace name
+    stringSnippet = getStringBetween('<', lines[1], ':'+attribute+'>')
+    stringSnippet = stringSnippet.split('<')
+    shapefileterm[0] = stringSnippet[len(stringSnippet) - 1]
+    
     # look for this pattern: <term[0]:attribute>SOUGHTWORD</term[0]:attribute>
     values, tuples = getGMLIDString('gml:id="', lines[1], '">', '<'+shapefileterm[0] + 
                                     ':' + attribute + '>', '</' +shapefileterm[0] +':' + 
@@ -484,46 +509,79 @@ def getValues(shapefile, attribute, getTuples='false'):
         return sorted(values)
 
 def getTuples(shapefile, attribute):
+    """
+    Will return the dictionary tuples only.
+    """
     return getValues(shapefile, attribute, getTuples='only')
     
 def getFilterID(tuples, value):
-    
+    """
+    Given a the tuples generated by getTuples and a value, will return a list of gmlIDs
+    associated with the value specified.
+    """
+    value = str(value)
     filterID = []
     for item in tuples:
         if item[0] == value:
             filterID.append(item[1])
     return filterID
 
-def parseObjectforInfo(inputObject, term):
+def getLinesContaining(linesToParse, term):
+    """
+    Given a document, goes through the document and for each line with the
+    occurence of the specified term, add that line to a list.
+    Returns the list.
+    """
     line_list = []
-    for line in inputObject:
+    for line in linesToParse:
         if term in line:
             line_list.append(line)
-    inputObject.close()
+    linesToParse.close()
     return line_list
 
-def filterSubOne(filterID):
-    filter = filterID.split('.')
-    no = int(filter[1])
+def __filterSubOne(filterID):
+    """
+    Currently, gmlIDs returned are 1 greater than the actual ids.
+    This function adjusts the gmlID to their actual values.
+    """
+    
+    gmlIDs = filterID.split('.')
+    no = int(gmlIDs[1])
     if (no - 1) < 1:
         return None
-    filterID = filter[0] + '.' + str(no - 1)
+    filterID = gmlIDs[0] + '.' + str(no - 1)
     return filterID
 
-def submitFeatureWeightedRequest(shpfile, dataSetURI, dataType, attribute, value, startTime, endTime, 
+def submitRequest(shpfile, dataSetURI, dataType, attribute, value, startTime, endTime, gmlIDs=None,
                                 coverage='true', delim='COMMA', stat='MEAN', grpby='STATISTIC', timeStep='false', summAttr='false'):
+    """
+    Inputs: Shapefile, datasetURI, a dataType, an attribute, a value, a start Time, and an endTime
+    optional inputs: coverage, delimiters, stat, group by, time step, and summarize feature attribute
+    output: dataType header, value descriptions, header description, result values
     
-    # I have an off by one error... eg the outputs are ID + 1
-    filtersEdited = []
-    tuples = getTuples(shpfile, attribute)
-    filters = getFilterID(tuples, value)
-    for f in filters:
-        if filterSubOne(f) is not None:
-            filtersEdited.append(filterSubOne(f))
+    Makes a WPS call to the GDP. Returns with the valid information. 
+    """
+    
+    tmpID = []
+    if gmlIDs is None:
+        if type(value) == type(tmpID):
+            for v in value:
+                tuples = getTuples(shpfile, attribute)
+                tmpID = getFilterID(tuples, v)
+                gmlIDs = gmlIDs + tmpID
+        else:
+            # I have an off by one error... eg the outputs are ID + 1
+            tuples = getTuples(shpfile, attribute)
+            gmlIDs = getFilterID(tuples, value)
+    """
+    if gmlIDs is None:
+        tuples = getTuples(shpfile, attribute)
+        gmlIDs = getFilterID(tuples, value)
+    """
     
     wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService')
-    wfsUrl = 'http://cida-eros-gdp2.cr.usgs.gov:8082/geoserver/wfs'
-    query = WFSQuery(shpfile, propertyNames=["the_geom", attribute], filters=filtersEdited)
+    wfsUrl = 'http://cida-eros-gdp2.er.usgs.gov:8082/geoserver/wfs'
+    query = WFSQuery(shpfile, propertyNames=["the_geom", attribute], filters=gmlIDs)
     featureCollection = WFSFeatureCollection(wfsUrl, query)
     processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureWeightedGridStatisticsAlgorithm'
     inputs = [ ("FEATURE_ATTRIBUTE_NAME",attribute),
@@ -542,27 +600,64 @@ def submitFeatureWeightedRequest(shpfile, dataSetURI, dataType, attribute, value
     
     
     print 'Executing Request...'
-    
+    # redirects the standard output to avoid printing request status
     old_stdout = sys.stdout
     result = StringIO()
     sys.stdout = result
     
+    # executes the request
     execution = wps.execute(processid, inputs, output = "OUTPUT")
     monitorExecution(execution, download=True)    
     
+    # sets the standard output back to original
     sys.stdout = old_stdout
     result_string = result.getvalue()
     
+    #parses the redirected output to get the filepath of the
+    #saved file
     output = result_string.split('\n')
     print output[len(output) - 3]
     print output[len(output) - 2]
     tmp = output[len(output) - 2].split(' ')
     fname = tmp[len(tmp)-1]
     
-    return getData(fname, delim)
+    return getOutputDataFromFile(fname, delim)
     
+def makeExampleRequest(verbose=False):
+    wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService', verbose=verbose, skip_caps=True)
+    polygon = [(-102.8184, 39.5273), (-102.8184, 37.418), (-101.2363, 37.418), (-101.2363, 39.5273), (-102.8184, 39.5273)]
+    featureCollection = GMLMultiPolygonFeatureCollection( [polygon] )
+    processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureWeightedGridStatisticsAlgorithm'
+    inputs = [ ("FEATURE_ATTRIBUTE_NAME","the_geom"),
+           ("DATASET_URI", "dods://cida.usgs.gov/qa/thredds/dodsC/derivatives/derivative-days_above_threshold.pr.ncml"),
+           ("DATASET_ID", "ensemble_b1_pr-days_above_threshold"),
+           ("TIME_START","2010-01-01T00:00:00.000Z"),
+           ("TIME_END","2011-01-01T00:00:00.000Z"),
+           ("REQUIRE_FULL_COVERAGE","false"),
+           ("DELIMITER","COMMA"),
+           ("STATISTICS","MEAN"),
+           ("GROUP_BY","STATISTIC"),
+           ("SUMMARIZE_TIMESTEP","false"),
+           ("SUMMARIZE_FEATURE_ATTRIBUTE","false"),
+           ("FEATURE_COLLECTION", featureCollection)
+          ]
+    output = "OUTPUT"
+    execution = wps.execute(processid, inputs, output = "OUTPUT")
+    # alternatively, submit a pre-made request specified in an XML file
+    #request = open('../tests/wps_USGSExecuteRequest1.xml','r').read()
+    #execution = wps.execute(None, [], request=request)
 
-def getData(fname, delim):
+    # The monitorExecution() function can be conveniently used to wait for the process termination
+    # It will eventually write the process output to the specified file, or to the file specified by the server.
+    monitorExecution(execution)    
+
+
+def getOutputDataFromFile(fname, delim):
+    """
+    Given a filepath for an output file from the GDP and the specified document delimiter,
+    this function will parse the document and return a datatype header, value header, 
+    description header, and data row. 
+    """
     try:
         f = open(fname)
         rows = f.readlines()
@@ -590,7 +685,6 @@ def getData(fname, delim):
     except Exception:
         print 'Output error. Refer to previous error message.'
 
-# Submits an already well formed XML request to the WPS. Returns the dataset
 def submitFeatureWeightedXMLRequest(xml):
     """
     Given a well formed XML, submit the xml onto WPS
@@ -605,16 +699,33 @@ def submitFeatureWeightedXMLRequest(xml):
     execution = wps.execute(None, [], request=request)
     monitorExecution(execution, download=True)
 
-def getAvailableFilesFromGeoServer():
+def getShapefiles():
+    """
+    Returns a list of available files currently on geoserver.
+    """
     wfs = WebFeatureService(gdp_url)
     shapefiles = wfs.contents.keys()
     return shapefiles
 
 # Gets a list of valid dataset URIs, currently hardcoded. WILL need to make CWS call
 def getDataSetURI():
+    
+    """
+    csw_url = 'http://cida.usgs.gov/climate/gdp/proxy/http://cida.usgs.gov/gdp/geonetwork/srv/en/csw'
+    csw_request = '<csw:GetRecords xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" service="CSW" version="2.0.2" maxRecords="5" startPosition="6" outputFormat="application/xml" outputSchema="http://www.isotc211.org/2005/gmd" resultType="results"><csw:Query typeNames="csw:Record"><csw:ElementSetName>summary</csw:ElementSetName><csw:Constraint version="1.1.0"><ogc:Filter xmlns:ogc="http://www.opengis.net/ogc" xmlns="http://www.opengis.net/ogc" xmlns:gml="http://www.opengis.net/gml"><ogc:PropertyIsLike escape="\" singleChar="_" wildCard="%"><ogc:PropertyName>AnyText</ogc:PropertyName><ogc:Literal>%downscaled%</ogc:Literal></ogc:PropertyIsLike></ogc:Filter></csw:Constraint><csw:Constraint version="1.1.0"><ogc:Filter xmlns:ogc="http://www.opengis.net/ogc" xmlns="http://www.opengis.net/ogc" xmlns:gml="http://www.opengis.net/gml"><ogc:BBOX><ogc:PropertyName>ows:BoundingBox</ogc:PropertyName><gml:Envelope><gml:lowerCorner>-88.47203063964844 30.18962287902832</gml:lowerCorner><gml:upperCorner>-84.89348602294922 35.008880615234375</gml:upperCorner></gml:Envelope></ogc:BBOX></ogc:Filter></csw:Constraint><ogc:SortBy xmlns:ogc="http://www.opengis.net/ogc"/></csw:Query></csw:GetRecords>'
+    req = urllib2.Request(url=csw_url, data=csw_request, headers={'Content-Type':'application/xml'})
+    response = urllib2.urlopen(req)
+    response = response.read()
+    
+    return getAllStringBetweenInLine('<gmd:URL>', response, '</gmd:URL>')
+    
+    """ 
     dataSetURIs = ['http://regclim.coas.oregonstate.edu:8080/thredds/dodsC/regcmdata/NCEP/merged/monthly/RegCM3_A2_monthly_merged_NCEP.ncml',
                    'dods://igsarm-cida-thredds1.er.usgs.gov:8080/thredds/dodsC/dcp/conus_grid.w_meta.ncml',
+                   'http://cida.usgs.gov/qa/thredds/dodsC/prism',
                    'dods://igsarm-cida-thredds1.er.usgs.gov:8080/thredds/dodsC/maurer/maurer_brekke_w_meta.ncml',
                    'dods://igsarm-cida-thredds1.er.usgs.gov:8080/thredds/dodsC/dcp/alaska_grid.w_meta.ncml',
                    'dods://igsarm-cida-thredds1.er.usgs.gov:8080/thredds/dodsC/gmo/GMO_w_meta.ncml']
     return dataSetURIs
+
+
