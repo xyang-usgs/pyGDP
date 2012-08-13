@@ -622,8 +622,40 @@ def submitRequest(shpfile, dataSetURI, dataType, attribute, value, startTime, en
     fname = tmp[len(tmp)-1]
     
     return getOutputDataFromFile(fname, delim)
-    
+
+def sumbitRequestPolygon(polygon, dataSetURI, dataType, attribute, value, startTime, endTime,
+                                coverage='true', delim='COMMA', stat='MEAN', grpby='STATISTIC', timeStep='false', summAttr='false'):
+
+    """
+    Submit a wps request with a polygon (rather than shapefile). Format of the polygon is as followed:
+    eg: polygon = [(points, points), (points, points), (points, points), (points, points) ... (points, points)]
+    """
+    wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService', verbose=verbose, skip_caps=True)
+    featureCollection = GMLMultiPolygonFeatureCollection( [polygon] )
+    processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureWeightedGridStatisticsAlgorithm'
+     
+    inputs = [ ("FEATURE_ATTRIBUTE_NAME",attribute),
+           ("DATASET_URI", dataSetURI),
+           ("DATASET_ID", dataType),         
+           ("TIME_START",startTime),
+           ("TIME_END",endTime),
+           ("REQUIRE_FULL_COVERAGE",coverage),
+           ("DELIMITER",delim),
+           ("STATISTICS",stat),
+           ("GROUP_BY", grpby),
+           ("SUMMARIZE_TIMESTEP", timeStep),
+           ("SUMMARIZE_FEATURE_ATTRIBUTE",summAttr),
+           ("FEATURE_COLLECTION", featureCollection)
+          ]
+    output = "OUTPUT"
+    execution = wps.execute(processid, inputs, output = "OUTPUT")
+    monitorExecution(execution)    
+
 def makeExampleRequest(verbose=False):
+    """
+    Exampe request. Source: OWSLIB wps
+    """
+    
     wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService', verbose=verbose, skip_caps=True)
     polygon = [(-102.8184, 39.5273), (-102.8184, 37.418), (-101.2363, 37.418), (-101.2363, 39.5273), (-102.8184, 39.5273)]
     featureCollection = GMLMultiPolygonFeatureCollection( [polygon] )
@@ -711,15 +743,15 @@ def getShapefiles():
 def getDataSetURI():
     
     """
-    csw_url = 'http://cida.usgs.gov/climate/gdp/proxy/http://cida.usgs.gov/gdp/geonetwork/srv/en/csw'
-    csw_request = '<csw:GetRecords xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" service="CSW" version="2.0.2" maxRecords="5" startPosition="6" outputFormat="application/xml" outputSchema="http://www.isotc211.org/2005/gmd" resultType="results"><csw:Query typeNames="csw:Record"><csw:ElementSetName>summary</csw:ElementSetName><csw:Constraint version="1.1.0"><ogc:Filter xmlns:ogc="http://www.opengis.net/ogc" xmlns="http://www.opengis.net/ogc" xmlns:gml="http://www.opengis.net/gml"><ogc:PropertyIsLike escape="\" singleChar="_" wildCard="%"><ogc:PropertyName>AnyText</ogc:PropertyName><ogc:Literal>%downscaled%</ogc:Literal></ogc:PropertyIsLike></ogc:Filter></csw:Constraint><csw:Constraint version="1.1.0"><ogc:Filter xmlns:ogc="http://www.opengis.net/ogc" xmlns="http://www.opengis.net/ogc" xmlns:gml="http://www.opengis.net/gml"><ogc:BBOX><ogc:PropertyName>ows:BoundingBox</ogc:PropertyName><gml:Envelope><gml:lowerCorner>-88.47203063964844 30.18962287902832</gml:lowerCorner><gml:upperCorner>-84.89348602294922 35.008880615234375</gml:upperCorner></gml:Envelope></ogc:BBOX></ogc:Filter></csw:Constraint><ogc:SortBy xmlns:ogc="http://www.opengis.net/ogc"/></csw:Query></csw:GetRecords>'
-    req = urllib2.Request(url=csw_url, data=csw_request, headers={'Content-Type':'application/xml'})
-    response = urllib2.urlopen(req)
-    response = response.read()
-    
-    return getAllStringBetweenInLine('<gmd:URL>', response, '</gmd:URL>')
-    
+    This function will not be implemented. This function is only implemented to give a few dataset URIs which may not work
+    with certain datasets and will with others within the bounding box requirements.
     """ 
+    
+    print 'The dataSetURI outputs a select few URIs and may not work with the specific shapefile you are providing. \
+    To ensure compatibility, we recommend selecting a dataSetURI that is specific to the shapefile. Or, you may utilize \
+    the web gdp @ http://cida.usgs.gov/climate/gdp/ to get a dataSet matching your specified shapefile.'
+    print
+    
     dataSetURIs = ['http://regclim.coas.oregonstate.edu:8080/thredds/dodsC/regcmdata/NCEP/merged/monthly/RegCM3_A2_monthly_merged_NCEP.ncml',
                    'dods://igsarm-cida-thredds1.er.usgs.gov:8080/thredds/dodsC/dcp/conus_grid.w_meta.ncml',
                    'http://cida.usgs.gov/qa/thredds/dodsC/prism',
