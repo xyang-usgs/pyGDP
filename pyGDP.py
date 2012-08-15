@@ -552,7 +552,7 @@ def __filterSubOne(filterID):
     filterID = gmlIDs[0] + '.' + str(no - 1)
     return filterID
 
-def submitRequest(shpfile, dataSetURI, dataType, attribute, value, startTime, endTime, gmlIDs=None,
+def featureWeightedGridStat(shpfile, dataSetURI, dataType, attribute, value, startTime, endTime, gmlIDs=None,
                                 coverage='true', delim='COMMA', stat='MEAN', grpby='STATISTIC', timeStep='false', summAttr='false'):
     """
     Inputs: Shapefile, datasetURI, a dataType, an attribute, a value, a start Time, and an endTime
@@ -570,14 +570,8 @@ def submitRequest(shpfile, dataSetURI, dataType, attribute, value, startTime, en
                 tmpID = getFilterID(tuples, v)
                 gmlIDs = gmlIDs + tmpID
         else:
-            # I have an off by one error... eg the outputs are ID + 1
             tuples = getTuples(shpfile, attribute)
             gmlIDs = getFilterID(tuples, value)
-    """
-    if gmlIDs is None:
-        tuples = getTuples(shpfile, attribute)
-        gmlIDs = getFilterID(tuples, value)
-    """
     
     wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService')
     wfsUrl = 'http://cida-eros-gdp2.er.usgs.gov:8082/geoserver/wfs'
@@ -597,7 +591,6 @@ def submitRequest(shpfile, dataSetURI, dataType, attribute, value, startTime, en
            ("SUMMARIZE_FEATURE_ATTRIBUTE",summAttr),
            ("FEATURE_COLLECTION", featureCollection)
           ]
-    
     
     print 'Executing Request...'
     # redirects the standard output to avoid printing request status
@@ -651,7 +644,7 @@ def sumbitRequestPolygon(polygon, dataSetURI, dataType, attribute, value, startT
     execution = wps.execute(processid, inputs, output = "OUTPUT")
     monitorExecution(execution)    
 
-def makeExampleRequest(verbose=False):
+def __makeExampleRequest(verbose=False):
     """
     Exampe request. Source: OWSLIB wps
     """
@@ -683,6 +676,105 @@ def makeExampleRequest(verbose=False):
     # It will eventually write the process output to the specified file, or to the file specified by the server.
     monitorExecution(execution)    
 
+def featureCoverageOPenDAP(shpfile, dataSetURI, dataType, attribute, value, startTime, endTime, coverage='true', verbose=False, gmlIDs=None):
+    """
+    Makes a featureCoverageOPenDap request. Takes a shapefile, datasetURI, datatype, attribute,
+    value, start and end time. Should specify coverage='true' or 'false' 
+    """
+    
+    tmpID = []
+    if gmlIDs is None:
+        if type(value) == type(tmpID):
+            for v in value:
+                tuples = getTuples(shpfile, attribute)
+                tmpID = getFilterID(tuples, v)
+                gmlIDs = gmlIDs + tmpID
+        else:
+            tuples = getTuples(shpfile, attribute)
+            gmlIDs = getFilterID(tuples, value)
+
+    wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService')
+    wfsUrl = 'http://cida-eros-gdp2.er.usgs.gov:8082/geoserver/wfs'
+    query = WFSQuery(shpfile, propertyNames=["the_geom", attribute], filters=gmlIDs)
+    featureCollection = WFSFeatureCollection(wfsUrl, query)
+    processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureCoverageOPeNDAPIntersectionAlgorithm'
+    inputs = [ ("DATASET_URI", dataSetURI),
+           ("DATASET_ID", dataType),         
+           ("TIME_START",startTime),
+           ("TIME_END",endTime),
+           ("REQUIRE_FULL_COVERAGE",coverage),
+           ("FEATURE_COLLECTION", featureCollection)
+          ]
+
+    # executes the request
+    execution = wps.execute(processid, inputs, output = "OUTPUT")
+    monitorExecution(execution, download=True) 
+
+def featureCoverageWCSIntersection(shpfile, dataSetURI, dataType, attribute, value, coverage='true', verbose=False, gmlIDs=None):
+    """
+    Makes a featureCoverageWCSInteraction request. Takes a shapefile, datasetURI, datatype, attribute,
+    and value. Should specify coverage='true' or 'false' 
+    """
+    
+    tmpID = []
+    if gmlIDs is None:
+        if type(value) == type(tmpID):
+            for v in value:
+                tuples = getTuples(shpfile, attribute)
+                tmpID = getFilterID(tuples, v)
+                gmlIDs = gmlIDs + tmpID
+        else:
+            tuples = getTuples(shpfile, attribute)
+            gmlIDs = getFilterID(tuples, value)
+    
+    wps = WebProcessingService('http://cida.usgs.gov/climate/gdp/process/WebProcessingService')
+    wfsUrl = 'http://cida-eros-gdp2.er.usgs.gov:8082/geoserver/wfs'
+    query = WFSQuery(shpfile, propertyNames=["the_geom", attribute], filters=gmlIDs)
+    featureCollection = WFSFeatureCollection(wfsUrl, query)
+    processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureCoverageIntersectionAlgorithm'
+    inputs = [("DATASET_URI", dataSetURI),
+           ("DATASET_ID", dataType),
+           ("REQUIRE_FULL_COVERAGE",coverage),
+           ("FEATURE_COLLECTION", featureCollection)
+          ]
+    
+    # executes the request
+    execution = wps.execute(processid, inputs, output = "OUTPUT")
+    monitorExecution(execution, download=True)
+
+def featureCategoricalGridCoverage(shpfile, dataSetURI, dataType, attribute, value, coverage='True', delim='COMMA', verbose=False, gmlIDs=None):
+    """
+    Makes a featureCoverageOPenDap request. Takes a shapefile, datasetURI, datatype, attribute,
+    and value. Should specify coverage='true' or 'false' and delimiter = 'COMMA' or 'TAB' or 'SPACE'
+    """
+    
+    tmpID = []
+    if gmlIDs is None:
+        if type(value) == type(tmpID):
+            for v in value:
+                tuples = getTuples(shpfile, attribute)
+                tmpID = getFilterID(tuples, v)
+                gmlIDs = gmlIDs + tmpID
+        else:
+            tuples = getTuples(shpfile, attribute)
+            gmlIDs = getFilterID(tuples, value)
+    
+    wps = WebProcessingService('http://cida.usgs.gov/gdp/process/WebProcessingService', verbose=verbose)    
+    wfsUrl = 'http://cida-eros-gdp2.er.usgs.gov:8082/geoserver/wfs'
+    query = WFSQuery(shpfile, propertyNames=["the_geom", attribute], filters=gmlIDs)
+    featureCollection = WFSFeatureCollection(wfsUrl, query)
+    processid = 'gov.usgs.cida.gdp.wps.algorithm.FeatureCategoricalGridCoverageAlgorithm'
+    inputs = [ ("FEATURE_ATTRIBUTE_NAME",attribute),
+           ("DATASET_URI", dataSetURI),
+           ("DATASET_ID", dataType),         
+           ("DELIMITER", delim),
+           ("REQUIRE_FULL_COVERAGE",coverage),
+           ("FEATURE_COLLECTION", featureCollection)
+          ]
+    
+    # executes the request
+    execution = wps.execute(processid, inputs, output = "OUTPUT")
+    monitorExecution(execution, download=True)
 
 def getOutputDataFromFile(fname, delim):
     """
@@ -746,10 +838,9 @@ def getDataSetURI():
     This function will not be implemented. This function is only implemented to give a few dataset URIs which may not work
     with certain datasets and will with others within the bounding box requirements.
     """ 
-    
-    print 'The dataSetURI outputs a select few URIs and may not work with the specific shapefile you are providing. \
-    To ensure compatibility, we recommend selecting a dataSetURI that is specific to the shapefile. Or, you may utilize \
-    the web gdp @ http://cida.usgs.gov/climate/gdp/ to get a dataSet matching your specified shapefile.'
+    print 'The dataSetURI outputs a select few URIs and may not work with the specific shapefile you are providing.'
+    print 'To ensure compatibility, we recommend selecting a dataSetURI that is specific to the shapefile. 
+    print 'Or you may utilize the web gdp @ http://cida.usgs.gov/climate/gdp/ to get a dataSet matching your specified shapefile.'
     print
     
     dataSetURIs = ['http://regclim.coas.oregonstate.edu:8080/thredds/dodsC/regcmdata/NCEP/merged/monthly/RegCM3_A2_monthly_merged_NCEP.ncml',
@@ -759,5 +850,4 @@ def getDataSetURI():
                    'dods://igsarm-cida-thredds1.er.usgs.gov:8080/thredds/dodsC/dcp/alaska_grid.w_meta.ncml',
                    'dods://igsarm-cida-thredds1.er.usgs.gov:8080/thredds/dodsC/gmo/GMO_w_meta.ncml']
     return dataSetURIs
-
 
