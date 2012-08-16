@@ -839,7 +839,7 @@ def getDataSetURI():
     with certain datasets and will with others within the bounding box requirements.
     """ 
     print 'The dataSetURI outputs a select few URIs and may not work with the specific shapefile you are providing.'
-    print 'To ensure compatibility, we recommend selecting a dataSetURI that is specific to the shapefile. 
+    print 'To ensure compatibility, we recommend selecting a dataSetURI that is specific to the shapefile.' 
     print 'Or you may utilize the web gdp @ http://cida.usgs.gov/climate/gdp/ to get a dataSet matching your specified shapefile.'
     print
     
