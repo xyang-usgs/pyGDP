@@ -34,6 +34,7 @@ http://www.lfd.uci.edu/~gohlke/pythonlibs/
 
 For OSX users, you can installation instructions here:
 http://lxml.de/installation.html
+or use macports
 
 Support
 =================

@@ -1,5 +1,7 @@
 import pyGDP
 
+pyGDP = pyGDP.pyGDPwebProcessing()
+
 shapefile = 'sample:CONUS_States'
 attribute = 'STATE'
 value = 'Alabama'
@@ -8,4 +10,4 @@ dataSetURI = 'http://cida.usgs.gov/ArcGIS/services/statsgo_numid/MapServer/WCSSe
 
 dataType = '1'
 
-pyGDP.featureCoverageWCSIntersection(shapefile, dataSetURI, dataType, attribute, value)
+pyGDP.submitFeatureCoverageWCSIntersection(shapefile, dataSetURI, dataType, attribute, value, verbose=True)

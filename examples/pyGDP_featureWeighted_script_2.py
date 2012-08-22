@@ -1,5 +1,6 @@
 import pyGDP
 
+pyGDP = pyGDP.pyGDPwebProcessing()
 shapefiles = pyGDP.getShapefiles()
 print 'Available shapefiles: '
 for shapefile in shapefiles:
@@ -29,5 +30,5 @@ dataType = 'bcm2_a1b_tmax'
 
 timeBegin = '1960-01-01T00:00:00.000Z'
 timeEnd = '1970-01-21T00:00:00.000Z'
-out1, out2, out3, out4 = pyGDP.featureWeightedGridStat(shapefile, dataSetURI, dataType, usr_attribute, usr_value, timeBegin, timeEnd)
+outputPath = pyGDP.submitFeatureWeightedGridStatistics(shapefile, dataSetURI, dataType, timeBegin, timeEnd, usr_attribute, usr_value, gmlIDs=None, verbose=True)
 

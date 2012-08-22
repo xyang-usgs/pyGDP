@@ -1,27 +1,24 @@
 import pyGDP
-import glob
 import numpy as np
 import matplotlib.dates as mdates
 
-fileList = []
-for f in glob.glob("*"):
-    fileList.append(f)
+pyGDP = pyGDP.pyGDPwebProcessing()
 
-filePath = 'OKCNTYD.zip'
-# encode the zip file
-fileHandle = pyGDP.encodeZipFolder(filePath)
+
+filePath = 'testUpload.zip'
 #upload the file to geoserver
-shpfile = pyGDP.uploadService(fileHandle)
+shpfile = pyGDP.uploadShapeFile(filePath)
 
+print 
 shapefiles = pyGDP.getShapefiles()
 print 'Available shapefiles: '
 for shapefile in shapefiles:
     print shapefile
  
 # Grab the file and get its attributes:
-OKshapefile = 'upload:OKCNTYD'
+OKshapefile = shpfile
 if OKshapefile not in shapefiles:
-    print 'upload:OKCNTYD not on server.'
+    print shpfile + ' not on server.'
     exit()
 
 attributes = pyGDP.getAttributes(OKshapefile)
@@ -56,16 +53,10 @@ timeEnd = '2011-11-01T00:00:00.000Z'
 print
 
 
-
-pyGDP.featureWeightedGridStat(OKshapefile, dataSetURI, dataType, usr_attribute, usr_value, timeBegin, timeEnd)
-
-
-textFile = ''
-for f in glob.glob("*"):
-    if f not in fileList:
-        textFile = f
+textFile = pyGDP.submitFeatureWeightedGridStatistics(OKshapefile, dataSetURI, dataType, timeBegin, timeEnd,usr_attribute, usr_value)
 
 jd,precip=np.loadtxt(textFile,unpack=True,skiprows=3,delimiter=',', 
                      converters={0: mdates.strpdate2num('%Y-%m-%dT%H:%M:%SZ')})
 
+print 'Some data:'
 print precip[0:100]

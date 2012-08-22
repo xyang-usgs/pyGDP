@@ -1,4 +1,6 @@
 import pyGDP
+
+pyGDP = pyGDP.pyGDPwebProcessing()
 """
 This example script calls into the geoserver to obtain
 the name of the shapefile 'sample:CONUS_States' sets up the
@@ -25,16 +27,6 @@ for v in values:
     print v
 print
 
-"""
-Instead of specifically specifying a value, we get request to get
-the gmlID of these values and append them to a gmlID to be used
-as an input instead of value.
-"""
-wisGMLID = pyGDP.getGMLIDs(shapefile, usr_attribute, 'Wisconsin')
-michGMLID = pyGDP.getGMLIDs(shapefile, usr_attribute, 'Michigan')
-minnGDMLID = pyGDP.getGMLIDs(shapefile, usr_attribute, 'Minnesota')
-gmlIDs = wisGMLID + michGMLID + minnGDMLID
-
 # our shapefile = 'upload:OKCNTYD', usr_attribute = 'OBJECTID', and usr_value = 13
 # We get the dataset URI that we are interested in
 dataSetURIs = pyGDP.getDataSetURI()
@@ -54,5 +46,6 @@ for t in timeRange:
 Instead of submitting in a value, we submit a list of gmlIDs associated
 with either a small portion of that value, or multiple values.
 """
-value = None
-out1, out2, out3, out4 = pyGDP.featureWeightedGridStat(shapefile, dataSetURI, dataType, usr_attribute, value, timeRange[0], timeRange[0], gmlIDs)
+values = ['Wisconsin', 'Michigan', 'Minnesota']
+path = pyGDP.submitFeatureWeightedGridStatistics(shapefile, dataSetURI, dataType, timeRange[0], timeRange[0], usr_attribute, values)
+print path
