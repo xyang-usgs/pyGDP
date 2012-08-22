@@ -18,7 +18,7 @@ for shapefile in shapefiles:
 # Grab the file and get its attributes:
 OKshapefile = shpfile
 if OKshapefile not in shapefiles:
-    print shpfile + ' not on server.'
+    print str(shpfile) + ' not on server.'
     exit()
 
 attributes = pyGDP.getAttributes(OKshapefile)
