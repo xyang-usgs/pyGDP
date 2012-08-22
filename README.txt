@@ -38,9 +38,10 @@ or use macports
 
 Support
 =================
-Contact xyang@usgs.gov for questions, issues.
+Contact xyang@usgs.gov or jread@usgs.gov for questions, issues.
 
 Thanks
 =================
 1. Dave Blodgett
 2. Jordan I Walker
+3. Jordan Read
